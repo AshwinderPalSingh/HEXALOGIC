@@ -4,7 +4,7 @@ import textwrap
 # from core.flags import flags
 from core.basic_memory import Byte
 from core.exceptions import InvalidMemoryAddress, MemoryLimitExceeded
-from core.util import decompose_byte, get_byte_sequence
+from core.util import construct_hex, decompose_byte, get_byte_sequence
 
 """
 8051 has
@@ -243,17 +243,15 @@ class DataPointer:
         return self.__add__(1)
 
     def read(self, *args, **kwargs) -> Byte:
-        bin1 = format(int(str(self._DPL.read()), self._base), f"0{8*self._bytes}b")  # single byte
-        bin2 = format(int(str(self._DPH.read()), self._base), f"0{8*self._bytes}b")  # single byte
-        bin_total = "".join(["0b", bin2, bin1])
-        return format(int(bin_total, 2), f"#0{self._bytes*2 + 2}x")
+        return construct_hex(self._DPH.read(), self._DPL.read())
 
     def write(self, data, *args) -> Byte:
         data = decompose_byte(data)
         if len(data) != 2:
             raise InvalidMemoryAddress
-        self._DPL.write(data[0])
-        self._DPH.write(data[1])
+        # `decompose_byte` returns [high, low], while DPTR is DPH:DPL.
+        self._DPL.write(data[1])
+        self._DPH.write(data[0])
         return True
 
 
