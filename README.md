@@ -50,15 +50,6 @@ Designed for:
 
 ---
 
-## Project Origin and Attribution
-
-This project was originally cloned from the open-source repository:
-
-- https://github.com/devanshshukla99/8051-Simulator
-
-HexLogic extends and redesigns that base with AT89C51-focused debugging and interface upgrades.
-
----
 
 ## Architecture
 
