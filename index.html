@@ -7,17 +7,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/api/static/styles.css">
     <title>HexLogic | AT89C51 Simulator</title>
-   <script>
-    window.HEXLOGIC_API_BASE = "/api/v2";
-<script src="https://unpkg.com/monaco-editor@0.45.0/min/vs/loader.js"></script>
-
-<script>
-    window.HEXLOGIC_API_BASE = "/api/v2";
-
-    require.config({
-        paths: { vs: "https://unpkg.com/monaco-editor@0.45.0/min/vs" }
-    });
-</script>
+    <script>
+        // Frontend calls same-origin `/api/v2/*`; on Netlify this is proxied to Render via `netlify.toml`.
+        window.HEXLOGIC_API_BASE = "/api/v2";
+    </script>
+    <script src="https://unpkg.com/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script>
+        require.config({
+            paths: { vs: "https://unpkg.com/monaco-editor@0.45.0/min/vs" }
+        });
+    </script>
 
 <script src="/api/static/sim8051-client.js"></script>
 <script src="/api/static/sim8051-app.js" defer></script>
