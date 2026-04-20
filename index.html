@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta property="og:title" content="HexLogic" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/api/static/styles.css">
+    <title>HexLogic | AT89C51 Simulator</title>
+    <script>
+        // Frontend calls same-origin `/api/v2/*`; on Netlify this is proxied to Render via `netlify.toml`.
+        window.HEXLOGIC_API_BASE = "/api/v2";
+    </script>
+    <script src="https://unpkg.com/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script>
+        require.config({
+            paths: { vs: "https://unpkg.com/monaco-editor@0.45.0/min/vs" }
+        });
+    </script>
+
+<script src="/api/static/sim8051-client.js"></script>
+<script src="/api/static/sim8051-app.js" defer></script>
+</head>
+
+<body>
+    <div class="ide-root">
+        <div class="app-loader" id="app-loader" aria-live="polite">
+            <div class="loader-shell">
+                <img class="loader-logo" src="/api/static/hexlogic-logo.png" alt="HexLogic logo"
+                    onerror="this.onerror=null;this.src='/api/static/hexlogic-logo-light.png';">
+                <div class="loader-bar"><span id="loader-progress"></span></div>
+            </div>
+        </div>
+
+        <header class="titlebar">
+            <div class="title-left">
+                <img class="brand-logo" src="/api/static/hexlogic-logo.png" alt="HexLogic logo"
+                    onerror="this.onerror=null;this.src='/api/static/hexlogic-logo-light.png';">
+                <div class="brand-meta">
+                    <span class="brand-name">HexLogic</span>
+                    <span class="brand-chip">Target: AT89C51</span>
+                </div>
+            </div>
+            <div class="title-right">Cycle Accurate Debug View</div>
+        </header>
+
+        <div class="toolbar">
+            <div class="toolbar-group">
+                <button type="button" class="tool-btn" id="assemble">Assemble</button>
+                <button type="button" class="tool-btn" id="run">Run</button>
+                <button type="button" class="tool-btn" id="step">Step</button>
+                <button type="button" class="tool-btn" id="pause">Pause</button>
+                <button type="button" class="tool-btn danger" id="stop">Stop</button>
+                <button type="button" class="tool-btn" id="run_to_cursor">Run To Cursor</button>
+                <button type="button" class="tool-btn danger" id="reset">Reset</button>
+            </div>
+            <div class="toolbar-group toolbar-right">
+                <label class="toolbar-label" for="run_speed">Speed</label>
+                <input id="run_speed" class="speed-input" type="range" min="1" max="10" value="6">
+                <span class="speed-label" id="speed_label">6x</span>
+
+                <div class="toolbar-converter">
+                    <label class="toolbar-label" for="convert_input">Base Converter</label>
+                    <select id="convert_from" class="converter-select" aria-label="Convert from">
+                        <option value="hex">Hex</option>
+                        <option value="dec">Dec</option>
+                        <option value="bin">Bin</option>
+                    </select>
+                    <input class="converter-input" id="convert_input" autocomplete="off" placeholder="Value">
+                    <span class="converter-arrow">to</span>
+                    <select id="convert_to" class="converter-select" aria-label="Convert to">
+                        <option value="dec">Dec</option>
+                        <option value="hex">Hex</option>
+                        <option value="bin">Bin</option>
+                    </select>
+                    <input class="converter-output" id="convert_output" readonly aria-label="Conversion result">
+                    <button type="button" class="tool-btn tiny" id="convert_swap">Swap</button>
+                </div>
+
+                <button type="button" class="tool-btn small" id="download_output">Download Output</button>
+                <button type="button" class="tool-btn small" id="waveform_toggle">Waveform</button>
+                <button type="button" class="tool-btn small" id="help_toggle" aria-expanded="false"
+                    aria-controls="help-popover">Help</button>
+                <button type="button" class="tool-btn small" id="theme_toggle">Dark Mode</button>
+                <button type="button" class="tool-btn small" id="clear_breakpoints">Clear Breakpoints</button>
+                <label class="toolbar-label" for="memory_edit_input">Memory Edit</label>
+                <input class="memory-edit" placeholder="Ex: 0800H=12H or 20H:2FH" id="memory_edit_input"
+                    autocomplete="off">
+            </div>
+        </div>
+        <div class="help-popover" id="help-popover" hidden>
+            Help / Contact:
+            <a class="help-link" href="mailto:ashwinder.p.prof@gmail.com">ashwinder.p.prof@gmail.com</a>
+        </div>
+        <aside class="wave-drawer" id="wave-drawer" hidden aria-label="Logic waveform viewer">
+            <div class="wave-drawer-head">
+                <div class="wave-drawer-copy">
+                    <div class="wave-drawer-title">Logic Wave Viewer</div>
+                    <div class="wave-drawer-status" id="wave-status">No waveform channels detected.</div>
+                </div>
+                <button type="button" class="tool-btn tiny" id="wave-collapse">Close</button>
+            </div>
+            <div class="wave-drawer-body">
+                <div class="empty-output" id="wave-empty">Assemble code with pin bit operations like CPL P2.1.</div>
+                <div class="wave-list" id="wave-list"></div>
+            </div>
+        </aside>
+
+        <main class="workspace" id="workspace">
+            <aside class="panel-column left-pane" data-column="left">
+                <section class="panel dock-panel target-panel" data-panel="target">
+                    <div class="panel-title">Target Explorer</div>
+                    <div class="panel-content">
+                        <ul class="project-tree">
+                            <li><span class="tree-folder">Target 1 (AT89C51)</span></li>
+                            <li><span class="tree-file">startup.a51</span></li>
+                            <li><span class="tree-file active">main.asm</span></li>
+                            <li><span class="tree-file">sfr_watch</span></li>
+                            <li><span class="tree-file">stack_trace</span></li>
+                        </ul>
+                        <div class="breakpoint-summary">
+                            <div class="summary-title">Breakpoints</div>
+                            <div id="breakpoint-list" class="summary-body">None</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel dock-panel registers-panel" data-panel="registers" id="registers-flags">
+                    <section class="subpanel">
+                        <div class="subpanel-title">Execution State</div>
+                        <table class="keil-table compact">
+                            <tbody>
+                                <tr>
+                                    <th>Ready</th>
+                                    <td>No</td>
+                                </tr>
+                                <tr>
+                                    <th>Instruction Pointer</th>
+                                    <td>0</td>
+                                </tr>
+                                <tr>
+                                    <th>Instruction Count</th>
+                                    <td>0</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                    <section class="subpanel">
+                        <div class="subpanel-title">Registers</div>
+                        <table class="keil-table compact" data-table="registers">
+                            <thead>
+                                <tr>
+                                    <th>Register</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>A/PSW</td>
+                                    <td data-watch-key="reg:A/PSW">0x00 0x00</td>
+                                </tr>
+                                <tr>
+                                    <td>B</td>
+                                    <td data-watch-key="reg:B">0x00</td>
+                                </tr>
+                                <tr>
+                                    <td>SP</td>
+                                    <td data-watch-key="reg:SP">0x07</td>
+                                </tr>
+                                <tr>
+                                    <td>PC</td>
+                                    <td data-watch-key="reg:PC">0x0000</td>
+                                </tr>
+                                <tr>
+                                    <td>DPTR</td>
+                                    <td data-watch-key="reg:DPTR">0x0000</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                    <section class="subpanel">
+                        <div class="subpanel-title">Flags</div>
+                        <table class="keil-table compact" data-table="flags">
+                            <thead>
+                                <tr>
+                                    <th>Flag</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>P</td><td class="flag-cell" data-watch-key="flag:P"><input class="flag-input" type="checkbox" id="P" data-flag-key="flag:P"></td></tr>
+                                <tr><td>_UD</td><td class="flag-cell" data-watch-key="flag:_UD"><input class="flag-input" type="checkbox" id="_UD" data-flag-key="flag:_UD"></td></tr>
+                                <tr><td>OV</td><td class="flag-cell" data-watch-key="flag:OV"><input class="flag-input" type="checkbox" id="OV" data-flag-key="flag:OV"></td></tr>
+                                <tr><td>RS0</td><td class="flag-cell" data-watch-key="flag:RS0"><input class="flag-input" type="checkbox" id="RS0" data-flag-key="flag:RS0"></td></tr>
+                                <tr><td>RS1</td><td class="flag-cell" data-watch-key="flag:RS1"><input class="flag-input" type="checkbox" id="RS1" data-flag-key="flag:RS1"></td></tr>
+                                <tr><td>F0</td><td class="flag-cell" data-watch-key="flag:F0"><input class="flag-input" type="checkbox" id="F0" data-flag-key="flag:F0"></td></tr>
+                                <tr><td>AC</td><td class="flag-cell" data-watch-key="flag:AC"><input class="flag-input" type="checkbox" id="AC" data-flag-key="flag:AC"></td></tr>
+                                <tr><td>CY</td><td class="flag-cell" data-watch-key="flag:CY"><input class="flag-input" type="checkbox" id="CY" data-flag-key="flag:CY"></td></tr>
+                            </tbody>
+                        </table>
+                    </section>
+                </section>
+            </aside>
+
+            <div class="col-resizer" data-resizer="left" role="separator" aria-orientation="vertical"
+                aria-label="Resize left and center panels"></div>
+
+            <section class="panel-column center-pane" data-column="center">
+                <section class="panel dock-panel editor-panel" data-panel="editor">
+                    <div class="panel-title panel-title-row">
+                        <span>Editor - main.asm</span>
+                        <span class="editor-hint">Click line numbers to toggle breakpoints</span>
+                    </div>
+                    <div class="editor-body">
+                        <div class="editor-gutter" id="gutter" aria-label="Execution gutter"></div>
+                        <textarea class="code-box" id="code" autocomplete="off" spellcheck="false"
+                            placeholder="Type 8051 assembly code here"></textarea>
+                    </div>
+                </section>
+
+                <section class="panel dock-panel assembler-panel" data-panel="assembler" id="assembler-container">
+                    <section class="subpanel build-output">
+                        <div class="subpanel-title">Assembler Output</div>
+                        <div class="empty-output">No assembler output yet. Click Assemble to generate opcodes.</div>
+                    </section>
+                </section>
+
+                <section class="panel dock-panel debugger-panel" data-panel="debugger">
+                    <div class="panel-title">Debugger Console</div>
+                    <div class="debugger-grid">
+                        <div id="debug-console" class="debug-console"></div>
+                        <div id="error-box" class="error-box" hidden>No errors.</div>
+                    </div>
+                </section>
+            </section>
+
+            <div class="col-resizer" data-resizer="right" role="separator" aria-orientation="vertical"
+                aria-label="Resize center and right panels"></div>
+
+            <aside class="panel-column right-pane" data-column="right">
+                <section class="panel dock-panel memory-panel" data-panel="memory" id="memory-container">
+                    <section class="memory-window">
+                        <div class="subpanel-title">Internal RAM</div>
+                        <div class="empty-output">No memory output yet. Click Assemble to populate view.</div>
+                    </section>
+                    <section class="memory-window">
+                        <div class="subpanel-title">Code ROM</div>
+                        <div class="empty-output">No code ROM output yet. Click Assemble to populate view.</div>
+                    </section>
+                </section>
+            </aside>
+        </main>
+
+        <footer class="statusbar">
+            <div id="status-text">Ready.</div>
+            <div id="status-extra" class="status-right">Mode: AT89C51</div>
+        </footer>
+    </div>
+</body>
+
+</html>
