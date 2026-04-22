@@ -2,6 +2,9 @@
   publish = "dist"
   command = "npm run build"
 
+[build.environment]
+  NODE_VERSION = "20"
+
 [[redirects]]
   from = "/backend/*"
   to = "https://hexlogic-api.onrender.com/:splat"
