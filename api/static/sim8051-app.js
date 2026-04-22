@@ -21,6 +21,13 @@ const TRACE_LIMIT = 200;
 const RUN_FRAME_MAX_STEPS = 100000;
 const UI_FRAME_BUDGET_MS = 1000 / 60;
 const PORT_BASES = [0x80, 0x90, 0xA0, 0xB0];
+const DEFAULT_HARDWARE_DEVICE_TYPES = [
+    { type: "led", label: "LED", icon: "💡" },
+    { type: "switch", label: "Switch", icon: "⏻" },
+    { type: "led_array", label: "LED Array", icon: "▦" },
+    { type: "seven_segment", label: "7-Segment", icon: "8" },
+    { type: "stepper", label: "Stepper", icon: "⟲" },
+];
 const DEFAULT_SOURCE = {
     "8051": [
         "ORG 0000H",
@@ -1161,8 +1168,26 @@ function _renderHardwarePalette(hw) {
     if (!node) {
         return;
     }
-    const types = hw?.device_types || [];
-    node.innerHTML = types.map((type) => `
+    const types = hw?.device_types || hw?.deviceTypes || [];
+    const resolvedTypes = types.length ? types : DEFAULT_HARDWARE_DEVICE_TYPES;
+    if (!types.length) {
+        node.innerHTML = `
+            <div class="vh-pass-line">
+                Hardware catalog missing from backend response. Showing fallback palette.
+                <div class="vh-cause-line">Redeploy the Render backend to the latest commit to restore full hardware metadata.</div>
+            </div>
+        ` + resolvedTypes.map((type) => `
+            <button type="button" class="vh-palette-item" data-device-type="${escapeHtml(type.type)}">
+                <span class="vh-palette-icon">${escapeHtml(type.icon || "•")}</span>
+                <span class="vh-palette-copy">
+                    <strong>${escapeHtml(type.label || type.type)}</strong>
+                    <span>${escapeHtml(type.type)}</span>
+                </span>
+            </button>
+        `).join("");
+        return;
+    }
+    node.innerHTML = resolvedTypes.map((type) => `
         <button type="button" class="vh-palette-item" data-device-type="${escapeHtml(type.type)}">
             <span class="vh-palette-icon">${escapeHtml(type.icon || "•")}</span>
             <span class="vh-palette-copy">
@@ -4233,6 +4258,31 @@ function bindUi() {
     bindVirtualHardwareUi();
 }
 
+function auditBackendHardwareContract(snapshot) {
+    const hw = snapshot?.hardware;
+    const missing = [];
+    if (!hw) {
+        missing.push("state.hardware");
+    } else {
+        const types = hw.device_types || hw.deviceTypes;
+        if (!Array.isArray(types) || types.length === 0) {
+            missing.push("hardware.device_types");
+        }
+        if (!hw.catalog || typeof hw.catalog !== "object") {
+            missing.push("hardware.catalog");
+        }
+        if (!hw.pins || typeof hw.pins !== "object") {
+            missing.push("hardware.pins");
+        }
+    }
+    if (!missing.length) {
+        return;
+    }
+    console.warn("[HexLogic] Backend hardware payload is incomplete:", { missing, hardware: hw });
+    pushToast("Backend hardware payload is incomplete. Hardware UI may be degraded.", "warn", 6000);
+    setStatusExtra(`Hardware degraded: missing ${missing.join(", ")}`);
+}
+
 async function initialize() {
     setLoaderProgress(8);
     setTheme(appState.theme);
@@ -4259,6 +4309,7 @@ async function initialize() {
     const snapshot = await client.state();
     setLoaderProgress(82);
     renderSnapshot(snapshot);
+    auditBackendHardwareContract(snapshot);
     appState.editor.getModel().setValue(snapshot.source_code || DEFAULT_SOURCE[snapshot.architecture]);
     clearConsole();
     logConsole(monaco ? "Simulator ready. Monaco initialized." : "Simulator ready. Monaco failed to load; fallback editor active.");
