@@ -1,38 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta property="og:title" content="HexLogic" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/api/static/styles.css">
-    <title>HexLogic | Multi-Architecture Emulator</title>
-    <script>
-        window.HEXLOGIC_API_BASE = "/api/v2";
-        window.HEXLOGIC_MONACO_BASE = "https://unpkg.com/monaco-editor@0.45.0/min/";
-    </script>
-    <script src="https://unpkg.com/monaco-editor@0.45.0/min/vs/loader.js"></script>
-    <script>
-        if (typeof window.require === "undefined") {
-            console.error("Monaco AMD loader did not load from CDN.");
-        } else {
-            window.require.config({
-                paths: {
-                    vs: "https://unpkg.com/monaco-editor@0.45.0/min/vs"
-                }
-            });
-        }
-    </script>
-    <script type="module" src="/src/main.js"></script>
-</head>
-
-<body>
 <div class="ide-root" id="ide-root" data-workspace="code">
     <div class="app-loader" id="app-loader" aria-live="polite">
         <div class="loader-shell">
             <div class="loader-spinner" aria-hidden="true"></div>
-            <img class="loader-logo" src="/api/static/hexlogic-logo.png" alt="HexLogic logo"
-                onerror="this.onerror=null;this.src='/api/static/hexlogic-logo-light.png';">
+            <img class="loader-logo" src="{{ asset_prefix }}/hexlogic-logo.png" alt="HexLogic logo"
+                onerror="this.onerror=null;this.src='{{ asset_prefix }}/hexlogic-logo-light.png';">
             <div class="loader-copy">
                 <div class="loader-title">HexLogic Emulator</div>
                 <div class="loader-subtitle">Booting sandboxed multi-architecture debugger</div>
@@ -44,8 +15,8 @@
 
     <header class="titlebar">
         <div class="title-left">
-            <img class="brand-logo" src="/api/static/hexlogic-logo.png" alt="HexLogic logo"
-                onerror="this.onerror=null;this.src='/api/static/hexlogic-logo-light.png';">
+            <img class="brand-logo" src="{{ asset_prefix }}/hexlogic-logo.png" alt="HexLogic logo"
+                onerror="this.onerror=null;this.src='{{ asset_prefix }}/hexlogic-logo-light.png';">
             <div class="brand-meta">
                 <span class="brand-name">HexLogic</span>
                 <span class="brand-chip" id="target-chip">Target: 8051</span>
@@ -308,7 +279,3 @@
         <div id="status-extra" class="status-right">Mode: 8051</div>
     </footer>
 </div>
-
-</body>
-
-</html>

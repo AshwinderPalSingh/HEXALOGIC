@@ -6,12 +6,12 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
-
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "api" / "static" / "layout-utils.js"
 DOCK_MODULE = ROOT / "api" / "static" / "dock-layout.js"
 APP_MODULE = ROOT / "api" / "static" / "sim8051-app.js"
+STATIC_INDEX = ROOT / "index.html"
+NETLIFY_CONFIG = ROOT / "netlify.toml"
 
 
 def _run_node_layout_probe() -> dict:
@@ -118,3 +118,63 @@ def test_dock_layout_uses_transform_based_panel_motion():
 
     assert "translate3d(" in source
     assert "panel.style.transform =" in source
+
+
+def test_static_netlify_entry_exposes_required_app_shell_ids():
+    source = STATIC_INDEX.read_text()
+
+    required_ids = {
+        "ide-root",
+        "target-chip",
+        "workspace_code",
+        "workspace_hardware",
+        "architecture_select",
+        "endian_select",
+        "debug_toggle",
+        "execution_mode_select",
+        "step_over",
+        "step_out",
+        "step_back",
+        "export_state",
+        "import_state",
+        "editor-host",
+        "project-tree",
+        "exec-state-panel",
+        "registers-panel-body",
+        "call-stack-body",
+        "assembler-panel-body",
+        "trace-panel-body",
+        "memory-ram",
+        "memory-xram",
+        "memory-rom",
+        "metrics-panel-body",
+        "hardware-panel",
+        "vh-component-palette",
+        "vh-board-viewport",
+        "hardware-stage",
+        "vh-wire-layer",
+        "hardware-canvas",
+        "vh-port-values",
+        "vh-component-states",
+        "vh-validation-errors",
+        "vh-signal-log",
+        "vh-logic-analyzer",
+        "vh-inspector",
+        "vh-test-results",
+        "toast-stack",
+    }
+
+    for element_id in required_ids:
+        assert f'id="{element_id}"' in source
+
+    assert 'window.HEXLOGIC_API_BASE = "/api/v2";' in source
+    assert '/api/static/styles.css' in source
+    assert 'type="module" src="/src/main.js"' in source
+    assert "/api/static/sim8051-app.js" not in source
+    assert "/api/static/sim8051-client.js" not in source
+
+
+def test_netlify_build_uses_vite_dist_output():
+    config = NETLIFY_CONFIG.read_text()
+    assert 'publish = "dist"' in config
+    assert 'command = "npm run build"' in config

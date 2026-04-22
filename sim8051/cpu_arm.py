@@ -147,6 +147,8 @@ class CPUARM(BaseCPU):
         self._write_mmio32(_ARM_TIMER_VALUE, 0)
         self._write_mmio32(_ARM_TIMER_CTRL, 0)
         self._write_mmio32(_ARM_TIMER_PENDING, 0)
+        for address, value in sorted(program.xram_init.items()):
+            self.memory.write_xram(address, value)
         self.memory.consume_changes()
 
     def set_endian(self, endian: str) -> None:
@@ -622,6 +624,36 @@ class CPUARM(BaseCPU):
             suffix = f"[R{rn}], {offset_text}"
         return f"{'LDR' if load else 'STR'} R{rd},{suffix}", 3
 
+    def _is_multiply_long_opcode(self, opcode: int) -> bool:
+        return ((opcode >> 23) & 0x1F) == 0x01 and ((opcode >> 4) & 0xF) == 0x9
+
+    def _execute_multiply_long(self, opcode: int, current_pc: int) -> tuple[str, int]:
+        signed = (opcode >> 22) & 0x1
+        accumulate = (opcode >> 21) & 0x1
+        set_flags = (opcode >> 20) & 0x1
+        rd_hi = (opcode >> 16) & 0xF
+        rd_lo = (opcode >> 12) & 0xF
+        rs = (opcode >> 8) & 0xF
+        rm = opcode & 0xF
+        if signed:
+            raise DecodeError("Signed ARM multiply-long instructions are not implemented", pc=current_pc)
+        left = self._read_reg(rm, current_pc=current_pc) & 0xFFFFFFFF
+        right = self._read_reg(rs, current_pc=current_pc) & 0xFFFFFFFF
+        product = (left * right) & 0xFFFFFFFFFFFFFFFF
+        accumulator = 0
+        if accumulate:
+            accumulator = ((self._read_reg(rd_hi, current_pc=current_pc) & 0xFFFFFFFF) << 32) | (
+                self._read_reg(rd_lo, current_pc=current_pc) & 0xFFFFFFFF
+            )
+        result = (product + accumulator) & 0xFFFFFFFFFFFFFFFF
+        self._write_reg(rd_lo, result & 0xFFFFFFFF)
+        self._write_reg(rd_hi, (result >> 32) & 0xFFFFFFFF)
+        if set_flags:
+            self.flag_n = 1 if (result >> 63) & 0x1 else 0
+            self.flag_z = 1 if result == 0 else 0
+        mnemonic = "UMLAL" if accumulate else "UMULL"
+        return f"{mnemonic} R{rd_lo},R{rd_hi},R{rm},R{rs}", 2
+
     def _execute_branch(self, opcode: int, current_pc: int) -> tuple[str, int]:
         link = (opcode >> 24) & 0x1
         imm24 = opcode & 0x00FFFFFF
@@ -728,6 +760,8 @@ class CPUARM(BaseCPU):
                 mnemonic = f"SKIP.{COND_NAMES.get(cond, '??')}"
             elif (opcode & 0x0FFFFFF0) == 0x012FFF10:
                 mnemonic, cycles = self._execute_bx(opcode, current_pc)
+            elif self._is_multiply_long_opcode(opcode):
+                mnemonic, cycles = self._execute_multiply_long(opcode, current_pc)
             else:
                 category = (opcode >> 25) & 0x7
                 if category == 0b101:
@@ -783,6 +817,8 @@ class CPUARM(BaseCPU):
                 mnemonic = f"SKIP.{COND_NAMES.get(cond, '??')}"
             elif (opcode & 0x0FFFFFF0) == 0x012FFF10:
                 mnemonic, cycles = self._execute_bx(opcode, current_pc)
+            elif self._is_multiply_long_opcode(opcode):
+                mnemonic, cycles = self._execute_multiply_long(opcode, current_pc)
             else:
                 category = (opcode >> 25) & 0x7
                 if category == 0b101:
@@ -833,6 +869,8 @@ class CPUARM(BaseCPU):
                 mnemonic = f"SKIP.{COND_NAMES.get(cond, '??')}"
             elif (opcode & 0x0FFFFFF0) == 0x012FFF10:
                 mnemonic, cycles = self._execute_bx(opcode, current_pc)
+            elif self._is_multiply_long_opcode(opcode):
+                mnemonic, cycles = self._execute_multiply_long(opcode, current_pc)
             else:
                 category = (opcode >> 25) & 0x7
                 if category == 0b101:

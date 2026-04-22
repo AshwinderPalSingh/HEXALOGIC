@@ -51,6 +51,7 @@ def _program_to_dict(program: ProgramImage | None) -> dict[str, Any] | None:
         "address_to_line": {str(address): line for address, line in program.address_to_line.items()},
         "labels": program.labels,
         "size": program.size,
+        "xram_init": {str(address): value for address, value in program.xram_init.items()},
     }
 
 
@@ -77,6 +78,7 @@ def _program_from_dict(data: dict[str, Any] | None) -> ProgramImage | None:
         address_to_line={int(address): int(line) for address, line in dict(data.get("address_to_line", {})).items()},
         labels={str(label): int(value) for label, value in dict(data.get("labels", {})).items()},
         size=int(data.get("size", 0)),
+        xram_init={int(address): int(value) & 0xFF for address, value in dict(data.get("xram_init", {})).items()},
     )
 
 

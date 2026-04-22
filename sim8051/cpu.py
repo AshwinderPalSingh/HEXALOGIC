@@ -236,8 +236,7 @@ class CPU8051(BaseCPU):
     def inject_serial_rx(self, data: bytes | bytearray | list[int]) -> None:
         for byte in data:
             self.serial.rx_queue.append(int(byte) & 0xFF)
-        if self.serial.rx_queue and self.serial.pending_rx_cycles == 0:
-            self.serial.pending_rx_cycles = self._serial_frame_cycles(transmit=False)
+        self._ensure_serial_rx_progress()
 
     @property
     def sp(self) -> int:
@@ -338,6 +337,8 @@ class CPU8051(BaseCPU):
         if self._instruction_active and (address & 0xFF) == SFR_ADDRESSES["SBUF"]:
             self.serial.tx_byte = value
             self.serial.pending_tx_cycles = max(self._serial_frame_cycles(transmit=True), self.serial.pending_tx_cycles)
+        if (address & 0xFF) == SFR_ADDRESSES["SCON"]:
+            self._ensure_serial_rx_progress()
         if address == SFR_ADDRESSES["A"]:
             self._update_parity()
 
@@ -401,8 +402,7 @@ class CPU8051(BaseCPU):
         self.pc = address & 0xFFFF
 
     def _update_external_interrupt_latch(self, interrupt_index: int) -> None:
-        bit_name = "P3.2" if interrupt_index == 0 else "P3.3"
-        level = self.memory.read_named_bit(bit_name)
+        level = self._read_port_pin_level(3, 2 if interrupt_index == 0 else 3)
         previous = self._previous_int_pins[interrupt_index]
         it_bit = "IT0" if interrupt_index == 0 else "IT1"
         ie_flag = "IE0" if interrupt_index == 0 else "IE1"
@@ -465,6 +465,10 @@ class CPU8051(BaseCPU):
         self.last_interrupt = name
         return name
 
+    def _ensure_serial_rx_progress(self) -> None:
+        if self.serial.rx_queue and self.serial.pending_rx_cycles == 0 and self._get_flag("REN"):
+            self.serial.pending_rx_cycles = self._serial_frame_cycles(transmit=False)
+
     def _tick_serial(self, machine_cycles: int) -> None:
         if self.serial.pending_tx_cycles > 0:
             self.serial.pending_tx_cycles = max(0, self.serial.pending_tx_cycles - machine_cycles)
@@ -472,14 +476,14 @@ class CPU8051(BaseCPU):
                 self.serial.tx_log.append(self.serial.tx_byte)
                 self.serial.tx_byte = None
                 self._set_flag("TI", 1)
+        self._ensure_serial_rx_progress()
         if self.serial.pending_rx_cycles > 0:
             self.serial.pending_rx_cycles = max(0, self.serial.pending_rx_cycles - machine_cycles)
             if self.serial.pending_rx_cycles == 0 and self.serial.rx_queue and self._get_flag("REN"):
                 byte = self.serial.rx_queue.popleft()
                 self.memory.write_sfr("SBUF", byte)
                 self._set_flag("RI", 1)
-                if self.serial.rx_queue:
-                    self.serial.pending_rx_cycles = self._serial_frame_cycles(transmit=False)
+                self._ensure_serial_rx_progress()
 
     def _tick_timer_mode(self, timer_id: int, machine_cycles: int) -> None:
         shift = 0 if timer_id == 0 else 4

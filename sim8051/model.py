@@ -23,6 +23,7 @@ class ProgramImage:
     address_to_line: dict[int, int]
     labels: dict[str, int]
     size: int
+    xram_init: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

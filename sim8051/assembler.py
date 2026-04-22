@@ -222,6 +222,7 @@ class Assembler8051:
             address_to_line=address_to_line,
             labels=labels,
             size=len(binary),
+            xram_init={},
         )
 
     def _instruction_size(self, line: ParsedLine) -> int:

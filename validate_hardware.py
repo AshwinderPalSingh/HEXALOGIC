@@ -99,6 +99,43 @@ NOP
 END
 """.strip()
 
+SERIAL_RX_SOURCE = """
+ORG 0000H
+LJMP MAIN
+ORG 0023H
+ISR:
+MOV A,SBUF
+CLR RI
+RETI
+ORG 0030H
+MAIN:
+MOV A,#00H
+SETB ES
+SETB EA
+NOP
+NOP
+MOV SCON,#050H
+WAIT: SJMP WAIT
+END
+""".strip()
+
+EXTERNAL_INTERRUPT_SOURCE = """
+ORG 0000H
+LJMP MAIN
+ORG 0003H
+ISR:
+CPL P1.0
+RETI
+ORG 0030H
+MAIN:
+CLR P1.0
+SETB EX0
+SETB EA
+SETB IT0
+WAIT: SJMP WAIT
+END
+""".strip()
+
 ARM_TIMER_IRQ_SOURCE = """
 ORG 0000H
 B MAIN
@@ -418,6 +455,52 @@ def _run_serial_tx(clock_hz: int) -> dict[str, Any]:
     }
 
 
+def _run_serial_rx(clock_hz: int) -> dict[str, Any]:
+    assembler = Assembler8051(code_size=0x1000)
+    program = assembler.assemble(SERIAL_RX_SOURCE)
+    cpu = CPU8051(code_size=0x1000)
+    cpu.set_clock_hz(clock_hz)
+    cpu.load_program(program)
+    cpu.run(max_steps=5)
+    cpu.inject_serial_rx([0x41])
+    result = cpu.run(max_steps=16)
+    return {
+        "halted": result.halted,
+        "reason": result.reason,
+        "cycles": cpu.cycles,
+        "register_a": cpu.a,
+        "ri": cpu._get_flag("RI"),
+        "rx_pending": list(cpu.serial.rx_queue),
+        "interrupts": [trace.interrupt for trace in cpu.debugger.trace if trace.interrupt],
+    }
+
+
+def _run_external_interrupt(clock_hz: int) -> dict[str, Any]:
+    assembler = Assembler8051(code_size=0x1000)
+    program = assembler.assemble(EXTERNAL_INTERRUPT_SOURCE)
+    cpu = CPU8051(code_size=0x1000)
+    cpu.set_clock_hz(clock_hz)
+    cpu.load_program(program)
+    hw = VirtualHardwareManager("8051")
+    device = hw.add_device("led", label="INT0 LED")
+    hw.update_device(device.device_id, connections={"pin": "P1.0"})
+    _sync_full(hw, cpu)
+    cpu.run(max_steps=5)
+    _sync_tick(hw, cpu)
+    cpu.set_pin(3, 2, 1)
+    cpu.set_pin(3, 2, 0)
+    trace = cpu.step()
+    _sync_tick(hw, cpu)
+    events = _signal_events(hw, "P1.0")
+    return {
+        "interrupt": trace.interrupt,
+        "cycles": cpu.cycles,
+        "pin_level": cpu._read_port_pin_level(1, 0),
+        "signal_events": events,
+        "event_count": len(events),
+    }
+
+
 def _run_arm_validation() -> dict[str, Any]:
     assembler = AssemblerARM(code_size=0x200, endian="little")
 
@@ -459,6 +542,8 @@ def _component_statuses(
     interrupt_real_parity: TimingAccuracy,
     switch_gpio: dict[str, Any],
     serial_tx: dict[str, Any],
+    serial_rx: dict[str, Any],
+    external_interrupt: dict[str, Any],
     suite_8051: dict[str, Any],
     suite_arm: dict[str, Any],
     arm_results: dict[str, Any],
@@ -502,6 +587,14 @@ def _component_statuses(
             "status": "PASS" if serial_tx["tx_log"] == [0x55] and serial_tx["ti"] == 1 else "FAIL",
             "issues": "Serial TX byte and TI flag were checked after execution.",
         },
+        "Serial RX": {
+            "status": "PASS" if serial_rx["register_a"] == 0x41 and serial_rx["ri"] == 0 and not serial_rx["rx_pending"] else "FAIL",
+            "issues": "Delayed receiver enable now drains queued RX data and services the serial ISR correctly.",
+        },
+        "External Interrupt": {
+            "status": "PASS" if external_interrupt["interrupt"] == "EX0" and external_interrupt["event_count"] >= 1 else "FAIL",
+            "issues": "INT0 now samples the live P3.2 pin level instead of the port latch, so falling-edge IRQs toggle the LED as expected.",
+        },
         "ARM Timer IRQ": {
             "status": "PASS" if arm_results["timer_irq"]["irq_count"] >= 1 else "FAIL",
             "issues": "Functional only; not cycle-accurate versus production ARM silicon.",
@@ -535,6 +628,8 @@ def run_validation(*, clock_hz_8051: int = DEFAULT_8051_CLOCK_HZ) -> dict[str, A
 
     switch_gpio = _run_switch_gpio(clock_hz_8051)
     serial_tx = _run_serial_tx(clock_hz_8051)
+    serial_rx = _run_serial_rx(clock_hz_8051)
+    external_interrupt = _run_external_interrupt(clock_hz_8051)
     suite_8051 = VirtualHardwareManager("8051").run_test_suite()
     suite_arm = VirtualHardwareManager("arm").run_test_suite()
     arm_results = _run_arm_validation()
@@ -547,6 +642,8 @@ def run_validation(*, clock_hz_8051: int = DEFAULT_8051_CLOCK_HZ) -> dict[str, A
         interrupt_real_parity,
         switch_gpio,
         serial_tx,
+        serial_rx,
+        external_interrupt,
         suite_8051,
         suite_arm,
         arm_results,
@@ -565,7 +662,7 @@ def run_validation(*, clock_hz_8051: int = DEFAULT_8051_CLOCK_HZ) -> dict[str, A
         "Expand ARM timing coverage only if cycle-level parity is a project goal.",
         "Add browser E2E checks that assert acceptable receive-to-paint latency and dropped-frame ceilings.",
         "Export UI timing samples for long-run hardware visualization audits.",
-        "Broaden hardware regression coverage to additional 8051 peripherals such as serial RX and external interrupts.",
+        "Broaden 8051 regression coverage further only if you want parity on peripherals beyond the currently exercised timer/serial/external-interrupt set.",
     ]
     keil_match = "HIGH"
 
@@ -579,6 +676,8 @@ def run_validation(*, clock_hz_8051: int = DEFAULT_8051_CLOCK_HZ) -> dict[str, A
                 "Timer0 interrupt",
                 "GPIO switch input",
                 "Serial TX",
+                "Serial RX",
+                "External interrupt INT0",
                 "LED array",
                 "7-segment display",
                 "Stepper motor",
@@ -611,6 +710,8 @@ def run_validation(*, clock_hz_8051: int = DEFAULT_8051_CLOCK_HZ) -> dict[str, A
             },
             "switch_gpio": switch_gpio,
             "serial_tx": serial_tx,
+            "serial_rx": serial_rx,
+            "external_interrupt": external_interrupt,
             "built_in_suites": {"8051": suite_8051, "arm": suite_arm},
             "arm_validation": arm_results,
         },
@@ -626,6 +727,7 @@ def run_validation(*, clock_hz_8051: int = DEFAULT_8051_CLOCK_HZ) -> dict[str, A
             "match_level": keil_match,
             "differences": [
                 "Loop, GPIO, timer polling, serial, LED array, 7-segment, and stepper checks were functionally correct.",
+                "External interrupt and delayed serial-RX paths now execute correctly against live pin/input state.",
                 "8051 interrupt timing now includes explicit vectoring overhead and matches the measured AT89C51-style steady-state interval.",
                 "ARM execution is validated as a minimal functional model rather than a cycle-accurate Keil equivalent.",
             ],
@@ -691,7 +793,7 @@ def render_markdown_report(report: dict[str, Any]) -> str:
         "### 5. Hardware Validation",
         _status_table(report),
         "",
-        "* Additional Hardware: LED array, 7-segment, stepper, switch, serial, ARM timer IRQ, and ARM GPIO IRQ all executed and are summarized in JSON output.",
+        "* Additional Hardware: switch, serial TX/RX, external interrupt INT0, LED array, 7-segment, stepper, ARM timer IRQ, and ARM GPIO IRQ all executed and are summarized in JSON output.",
         "",
         "---",
         "",

@@ -4272,12 +4272,26 @@ async function initialize() {
     }
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-    initialize().catch((error) => {
-        handleError(error, "Application initialization failed");
+function bootApplication() {
+    try {
+        initialize().catch((error) => {
+            handleError(error, "Application initialization failed");
+            const loader = byId("app-loader");
+            if (loader) {
+                loader.remove();
+            }
+        });
+    } catch (error) {
+        handleError(error, "Application bootstrap failed");
         const loader = byId("app-loader");
         if (loader) {
             loader.remove();
         }
-    });
-});
+    }
+}
+
+if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", bootApplication, { once: true });
+} else {
+    bootApplication();
+}

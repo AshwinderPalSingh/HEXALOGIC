@@ -120,8 +120,13 @@ Virtual Memory + Debugger + Peripherals
 
 ```text
 HEXALOGIC/
-├── index.html             # Netlify static frontend entry (uses /backend proxy)
-├── netlify.toml           # Netlify publish + proxy redirects
+├── index.html             # Vite HTML entry (built to dist/ for Netlify)
+├── src/                   # Frontend boot entry (Vite)
+├── package.json           # Frontend build tooling (Vite)
+├── vite.config.js         # Vite build config (outputs dist/)
+├── scripts/               # Build helpers (static asset copy)
+├── dist/                  # Build output (Netlify publish dir)
+├── netlify.toml           # Netlify build + proxy redirects
 ├── render.yaml            # Render service blueprint
 ├── api/
 │   ├── index.py            # Flask entry point
@@ -204,9 +209,10 @@ The browser Runtime Metrics panel now exposes UI timing telemetry including rece
 
 ### Frontend - Netlify
 
-- Uses root `index.html` as static entry point
+- Uses Vite build output (`dist/`) as the publish directory
 - `netlify.toml` proxies `/backend/*` to Render API
 - Auto-deploy on push from GitHub
+- Local build: `npm run build` (outputs `dist/`)
 
 ### Backend - Render
 

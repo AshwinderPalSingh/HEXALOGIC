@@ -12,6 +12,8 @@ def test_validation_runner_produces_reproducible_report():
     assert report["hardware_validation"]["GPIO"]["status"] == "PASS"
     assert report["hardware_validation"]["Timer"]["status"] == "PASS"
     assert report["hardware_validation"]["Interrupt"]["status"] == "PASS"
+    assert report["hardware_validation"]["Serial RX"]["status"] == "PASS"
+    assert report["hardware_validation"]["External Interrupt"]["status"] == "PASS"
     assert report["measured_behavior"]["built_in_suites"]["8051"]["passed"] is True
     assert report["measured_behavior"]["built_in_suites"]["arm"]["passed"] is True
     assert report["final_verdict"]["accuracy_score"] >= 90

@@ -32,8 +32,10 @@ SHIFT_CODES = {"LSL": 0, "LSR": 1, "ASR": 2, "ROR": 3}
 BRANCH_MNEMONICS = {"B", "BL"}
 DP_MNEMONICS = {"AND", "EOR", "SUB", "ADC", "SBC", "TST", "CMP", "ORR", "MOV", "MVN", "ADD"}
 LOAD_STORE_MNEMONICS = {"LDR", "STR"}
+MULTIPLY_LONG_MNEMONICS = {"UMULL", "UMLAL"}
 PSEUDO_STACK = {"PUSH", "POP"}
-MNEMONIC_ORDER = sorted(DP_MNEMONICS | BRANCH_MNEMONICS | LOAD_STORE_MNEMONICS | PSEUDO_STACK | {"BX"}, key=len, reverse=True)
+ARM_DIRECTIVES = {"ORG", "END", "WORD", ".WORD", "DCD", "AREA", "ENTRY"}
+MNEMONIC_ORDER = sorted(DP_MNEMONICS | BRANCH_MNEMONICS | LOAD_STORE_MNEMONICS | MULTIPLY_LONG_MNEMONICS | PSEUDO_STACK | {"BX"}, key=len, reverse=True)
 
 
 @dataclass(slots=True)
@@ -45,6 +47,7 @@ class ParsedArmLine:
     operands: list[str]
     address: int = 0
     size: int = 0
+    section: str = "code"
 
 
 @dataclass(slots=True)
@@ -56,9 +59,10 @@ class ArmMnemonic:
 
 
 class AssemblerARM:
-    def __init__(self, *, code_size: int = 0x1000, endian: str = "little") -> None:
+    def __init__(self, *, code_size: int = 0x1000, endian: str = "little", data_base: int = 0x100) -> None:
         self.code_size = code_size
         self.endian = endian if endian in {"little", "big"} else "little"
+        self.data_base = max(0x40, int(data_base))
 
     def assemble(self, source: str) -> ProgramImage:
         parsed = self._parse_source(source)
@@ -77,6 +81,12 @@ class AssemblerARM:
             if label_match:
                 label = label_match.group(1).upper()
                 content = label_match.group(2).strip()
+            elif content:
+                parts = content.split(None, 1)
+                token = parts[0].upper().rstrip(",")
+                if not self._is_known_token(token):
+                    label = parts[0].upper()
+                    content = parts[1].strip() if len(parts) > 1 else ""
             if not content:
                 lines.append(ParsedArmLine(line_no=line_no, text=text, label=label, mnemonic=None, operands=[]))
                 continue
@@ -85,6 +95,13 @@ class AssemblerARM:
             operands = self._split_operands(parts[1] if len(parts) > 1 else "")
             lines.append(ParsedArmLine(line_no=line_no, text=text, label=label, mnemonic=mnemonic, operands=operands))
         return lines
+
+    def _is_known_token(self, token: str) -> bool:
+        try:
+            self._parse_mnemonic(token, 0)
+        except AssemblyError:
+            return False
+        return True
 
     def _split_operands(self, text: str) -> list[str]:
         if not text:
@@ -111,14 +128,14 @@ class AssemblerARM:
 
     def _parse_mnemonic(self, token: str, line_no: int) -> ArmMnemonic:
         upper = token.upper()
-        if upper in DIRECTIVE_BYTES or upper in {"ORG", "END", "WORD", ".WORD", "DCD"}:
+        if upper in DIRECTIVE_BYTES or upper in ARM_DIRECTIVES:
             return ArmMnemonic(base=upper, condition=CONDITION_CODES["AL"], condition_suffix="AL")
         for base in MNEMONIC_ORDER:
             if not upper.startswith(base):
                 continue
             suffix = upper[len(base):]
             set_flags = False
-            if base in {"ADD", "ADC", "SUB", "SBC", "AND", "ORR", "EOR", "MOV", "MVN"} and suffix.endswith("S"):
+            if base in {"ADD", "ADC", "SUB", "SBC", "AND", "ORR", "EOR", "MOV", "MVN", "UMULL", "UMLAL"} and suffix.endswith("S"):
                 set_flags = True
                 suffix = suffix[:-1]
             if suffix == "":
@@ -137,32 +154,64 @@ class AssemblerARM:
             )
         raise AssemblyError(f"unsupported instruction `{token}`", line_no)
 
+    def _parse_area_section(self, operands: list[str]) -> str:
+        normalized = {operand.strip().upper() for operand in operands}
+        if "DATA" in normalized:
+            return "data"
+        return "code"
+
     def _first_pass(self, lines: list[ParsedArmLine]) -> dict[str, int]:
         labels: dict[str, int] = {}
-        pc = 0
+        code_pc = 0
+        data_pc = self.data_base
+        current_section = "code"
         for line in lines:
+            line.section = current_section
             if line.label:
                 if line.label in labels:
                     raise AssemblyError(f"duplicate label `{line.label}`", line.line_no)
-                labels[line.label] = pc
+                labels[line.label] = code_pc if current_section == "code" else data_pc
             if not line.mnemonic:
-                line.address = pc
+                line.address = code_pc if current_section == "code" else data_pc
                 continue
-            line.address = pc
             meta = self._parse_mnemonic(line.mnemonic, line.line_no)
+            if meta.base == "AREA":
+                current_section = self._parse_area_section(line.operands)
+                line.section = current_section
+                line.address = code_pc if current_section == "code" else data_pc
+                continue
+            line.section = current_section
+            line.address = code_pc if current_section == "code" else data_pc
+            if meta.base == "ENTRY":
+                continue
             if meta.base == "ORG":
                 if len(line.operands) != 1:
                     raise AssemblyError("ORG expects one operand", line.line_no)
-                pc = evaluate_expression(line.operands[0], {**labels, "$": pc}, line.line_no)
-                if not 0 <= pc < self.code_size:
-                    raise AssemblyError("ORG address out of range", line.line_no)
-                line.address = pc
+                value = evaluate_expression(
+                    line.operands[0],
+                    {**labels, "$": code_pc if current_section == "code" else data_pc},
+                    line.line_no,
+                )
+                if current_section == "code":
+                    if not 0 <= value < self.code_size:
+                        raise AssemblyError("ORG address out of range", line.line_no)
+                    code_pc = value
+                else:
+                    if value < 0:
+                        raise AssemblyError("ORG address out of range", line.line_no)
+                    data_pc = value
+                line.address = value
                 continue
             if meta.base in DIRECTIVE_STOP:
                 break
+            if current_section == "data" and meta.base not in DIRECTIVE_BYTES | {"WORD", ".WORD", "DCD"}:
+                raise AssemblyError("instructions are not allowed in DATA areas", line.line_no)
             line.size = self._instruction_size(meta.base, line)
-            pc += line.size
-            if pc > self.code_size:
+            if current_section == "code":
+                code_pc += line.size
+            else:
+                data_pc += line.size
+            if code_pc > self.code_size:
                 raise AssemblyError("program exceeds ROM size", line.line_no)
         return labels
 
@@ -171,21 +220,49 @@ class AssemblerARM:
         listing: list[SourceLocation] = []
         address_to_line: dict[int, int] = {}
         used_bytes: dict[int, int] = {}
-        current_pc = 0
+        xram_init: dict[int, int] = {}
+        current_section = "code"
+        current_code_pc = 0
+        current_data_pc = self.data_base
 
         for line in lines:
             if line.mnemonic is None:
                 continue
             meta = self._parse_mnemonic(line.mnemonic, line.line_no)
+            if meta.base == "AREA":
+                current_section = self._parse_area_section(line.operands)
+                continue
+            if meta.base == "ENTRY":
+                continue
             if meta.base == "ORG":
-                current_pc = evaluate_expression(line.operands[0], {**labels, "$": line.address}, line.line_no)
+                value = evaluate_expression(line.operands[0], {**labels, "$": line.address}, line.line_no)
+                if current_section == "code":
+                    current_code_pc = value
+                else:
+                    current_data_pc = value
                 continue
             if meta.base in DIRECTIVE_STOP:
                 break
             encoded = self._encode_instruction(meta, line, labels)
             current_pc = line.address
+            if current_section == "data":
+                current_data_pc = current_pc
+                for offset, byte in enumerate(encoded):
+                    address = current_data_pc + offset
+                    xram_init[address] = byte & 0xFF
+                listing.append(
+                    SourceLocation(
+                        line=line.line_no,
+                        text=line.text,
+                        address=current_data_pc,
+                        size=len(encoded),
+                        bytes_=list(encoded),
+                    )
+                )
+                continue
+            current_code_pc = current_pc
             for offset, byte in enumerate(encoded):
-                address = current_pc + offset
+                address = current_code_pc + offset
                 rom[address] = byte
                 used_bytes[address] = byte
                 address_to_line[address] = line.line_no
@@ -193,7 +270,7 @@ class AssemblerARM:
                 SourceLocation(
                     line=line.line_no,
                     text=line.text,
-                    address=current_pc,
+                    address=current_code_pc,
                     size=len(encoded),
                     bytes_=list(encoded),
                 )
@@ -211,9 +288,12 @@ class AssemblerARM:
             address_to_line=address_to_line,
             labels=labels,
             size=len(binary),
+            xram_init=xram_init,
         )
 
     def _instruction_size(self, base: str, line: ParsedArmLine) -> int:
+        if base in {"AREA", "ENTRY"}:
+            return 0
         if base in DIRECTIVE_BYTES:
             return len(self._parse_db_operands(line))
         if base in {"WORD", ".WORD", "DCD"}:
@@ -348,6 +428,8 @@ class AssemblerARM:
             for operand in operands:
                 data.extend(self._encode_word(evaluate_expression(operand, symbols, line.line_no)))
             return bytes(data)
+        if base in {"UMULL", "UMLAL"}:
+            return self._encode_multiply_long(mnemonic, operands, line)
         if base == "B":
             return self._encode_branch(mnemonic, operands, symbols, line, link=False)
         if base == "BL":
@@ -375,6 +457,26 @@ class AssemblerARM:
             word = (mnemonic.condition << 28) | 0x049D0004 | (rd << 12) | (1 << 20)
             return self._encode_word(word)
         raise AssemblyError(f"unsupported instruction `{line.mnemonic}`", line.line_no)
+
+    def _encode_multiply_long(self, mnemonic: ArmMnemonic, operands: list[str], line: ParsedArmLine) -> bytes:
+        if len(operands) != 4:
+            raise AssemblyError(f"{mnemonic.base} expects four registers", line.line_no)
+        rd_lo = self._parse_register(operands[0], line.line_no)
+        rd_hi = self._parse_register(operands[1], line.line_no)
+        rm = self._parse_register(operands[2], line.line_no)
+        rs = self._parse_register(operands[3], line.line_no)
+        accumulate = 1 if mnemonic.base == "UMLAL" else 0
+        word = (
+            (mnemonic.condition << 28)
+            | 0x00800090
+            | (accumulate << 21)
+            | ((1 if mnemonic.set_flags else 0) << 20)
+            | (rd_hi << 16)
+            | (rd_lo << 12)
+            | (rs << 8)
+            | rm
+        )
+        return self._encode_word(word)
 
     def _encode_branch(self, mnemonic: ArmMnemonic, operands: list[str], symbols: dict[str, int], line: ParsedArmLine, *, link: bool) -> bytes:
         if len(operands) != 1:
@@ -423,6 +525,16 @@ class AssemblerARM:
         if len(operands) < 2 or len(operands) > 3:
             raise AssemblyError(f"{mnemonic.base} expects a register and memory operand", line.line_no)
         rd = self._parse_register(operands[0], line.line_no)
+        if mnemonic.base == "LDR" and len(operands) == 2 and operands[1].strip().startswith("="):
+            value = evaluate_expression(operands[1].strip()[1:], symbols, line.line_no) & 0xFFFFFFFF
+            try:
+                imm8, rotate = self._encode_immediate_operand(value, line.line_no)
+                word = (mnemonic.condition << 28) | (1 << 25) | (0xD << 21) | (rd << 12) | (rotate << 8) | imm8
+                return self._encode_word(word)
+            except AssemblyError:
+                imm8, rotate = self._encode_immediate_operand((~value) & 0xFFFFFFFF, line.line_no)
+                word = (mnemonic.condition << 28) | (1 << 25) | (0xF << 21) | (rd << 12) | (rotate << 8) | imm8
+                return self._encode_word(word)
         rn, pre_index, up, write_back, register_offset, offset = self._parse_memory_operands(operands, symbols, line.line_no)
         load = 1 if mnemonic.base == "LDR" else 0
         word = (

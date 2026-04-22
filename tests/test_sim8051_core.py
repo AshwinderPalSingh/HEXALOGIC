@@ -316,6 +316,81 @@ def test_timer0_counter_mode_preserves_multiple_falling_edges_between_instructio
     assert cpu.memory.read_sfr("TL0") == 0x02
 
 
+def test_external_interrupt0_edge_triggered_from_p32_falling_edge():
+    assembler = Assembler8051(code_size=0x1000)
+    program = assembler.assemble(
+        """
+        ORG 0000H
+        LJMP MAIN
+        ORG 0003H
+        ISR:
+        INC A
+        RETI
+        ORG 0030H
+        MAIN:
+        MOV A,#00H
+        SETB EX0
+        SETB EA
+        SETB IT0
+        WAIT:
+        SJMP WAIT
+        END
+        """.strip()
+    )
+    cpu = CPU8051(code_size=0x1000)
+    cpu.load_program(program)
+    cpu.run(max_steps=5)
+
+    cpu.set_pin(3, 2, 1)
+    cpu.set_pin(3, 2, 0)
+
+    trace = cpu.step()
+
+    assert trace.interrupt == "EX0"
+    assert cpu.a == 0x01
+    assert cpu._get_flag("IE0") == 0
+
+
+def test_external_interrupt0_level_triggered_tracks_live_pin_level():
+    assembler = Assembler8051(code_size=0x1000)
+    program = assembler.assemble(
+        """
+        ORG 0000H
+        LJMP MAIN
+        ORG 0003H
+        ISR:
+        INC A
+        RETI
+        ORG 0030H
+        MAIN:
+        MOV A,#00H
+        SETB EX0
+        SETB EA
+        CLR IT0
+        WAIT:
+        SJMP WAIT
+        END
+        """.strip()
+    )
+    cpu = CPU8051(code_size=0x1000)
+    cpu.load_program(program)
+    cpu.run(max_steps=5)
+
+    cpu.set_pin(3, 2, 0)
+    cpu.step()
+    cpu.step()
+    cpu.step()
+
+    assert cpu.a == 0x02
+    assert cpu._get_flag("IE0") == 1
+
+    cpu.set_pin(3, 2, 1)
+    trace = cpu.step()
+
+    assert trace.interrupt is None
+    assert cpu._get_flag("IE0") == 0
+
+
 def test_timer2_auto_reload_sets_tf2_and_triggers_interrupt_vector():
     assembler = Assembler8051(code_size=0x1000)
     program = assembler.assemble(
@@ -540,6 +615,37 @@ def test_serial_tx_sets_ti_and_records_transmitted_byte():
 
     assert cpu.serial.tx_log == [0x55]
     assert cpu._get_flag("TI") == 1
+
+
+def test_serial_rx_queued_before_ren_is_delivered_once_receiver_enables():
+    assembler = Assembler8051(code_size=0x1000)
+    program = assembler.assemble(
+        """
+        ORG 0000H
+        LJMP MAIN
+        ORG 0030H
+        MAIN:
+        MOV A,#00H
+        NOP
+        NOP
+        NOP
+        MOV SCON,#050H
+        WAIT:
+        SJMP WAIT
+        END
+        """.strip()
+    )
+    cpu = CPU8051(code_size=0x1000)
+    cpu.load_program(program)
+    cpu.run(max_steps=2)
+
+    cpu.inject_serial_rx([0x41])
+    cpu.run(max_steps=8)
+
+    assert cpu._get_flag("REN") == 1
+    assert cpu._get_flag("RI") == 1
+    assert cpu.memory.read_sfr("SBUF") == 0x41
+    assert list(cpu.serial.rx_queue) == []
 
 
 def test_step_out_returns_to_caller_frame():
@@ -902,6 +1008,80 @@ def test_arm_flags_support_multiword_add_and_subtract_sequences():
     assert cpu.registers[4] == 0
     assert cpu.registers[5] == 0
     assert (cpu.flag_n, cpu.flag_z, cpu.flag_c, cpu.flag_v) == (0, 1, 1, 0)
+
+
+def test_arm_umlal_accumulates_product_into_64bit_register_pair():
+    assembler = AssemblerARM(code_size=0x200, endian="little")
+    program = assembler.assemble(
+        """
+        ORG 0000H
+        MVN R0, #0
+        MOV R1, #0
+        MOV R2, #2
+        MOV R3, #2
+        UMLAL R0, R1, R2, R3
+        END
+        """.strip()
+    )
+    cpu = CPUARM(code_size=0x200, data_size=0x100, endian="little")
+    cpu.load_program(program)
+    cpu.run(max_steps=16)
+
+    assert cpu.registers[0] == 3
+    assert cpu.registers[1] == 1
+
+
+def test_arm_keil_style_source_with_area_entry_literal_loads_and_data_labels_runs():
+    assembler = AssemblerARM(code_size=0x400, endian="little")
+    program = assembler.assemble(
+        """
+        AREA PROGRAM, CODE, READONLY
+        ENTRY
+        MAIN
+        LDR R0, =NUM1
+        LDR R1, =NUM2
+        LDR R2, =RESULT
+        LDR R3, [R0]
+        LDR R4, [R0, #4]
+        LDR R5, [R1]
+        LDR R6, [R1, #4]
+        UMLAL R3, R4, R5, R6
+        STR R3, [R2]
+        STR R4, [R2, #4]
+        LDR R0, =NUM1
+        LDR R1, =NUM2
+        LDR R2, =RESULT
+        LDR R3, [R0]
+        LDR R4, [R1]
+        ADDS R5, R3, R4
+        STR R5, [R2]
+        LDR R6, [R0, #4]
+        LDR R7, [R1, #4]
+        ADC R8, R6, R7
+        STR R8, [R2, #4]
+        STOP B STOP
+
+        AREA PROGRAM, DATA, READONLY
+        NUM1 DCD 0xFFFFFFFF
+             DCD 0x00000001
+        NUM2 DCD 0x00000001
+             DCD 0x00000002
+        RESULT DCD 0x00000000
+               DCD 0x00000000
+        END
+        """.strip()
+    )
+    cpu = CPUARM(code_size=0x400, data_size=0x400, endian="little")
+    cpu.load_program(program)
+    result = cpu.run(max_steps=32)
+    result_base = program.labels["RESULT"]
+
+    assert program.labels["NUM1"] == 0x100
+    assert program.labels["NUM2"] == 0x108
+    assert result_base == 0x110
+    assert cpu.memory.read32(result_base, space="xram", endian="little") == 0
+    assert cpu.memory.read32(result_base + 4, space="xram", endian="little") == 4
+    assert any(step.mnemonic.startswith("UMLAL") for step in result.steps)
 
 
 def test_arm_shifts_conditional_execution_and_stack_pseudos_work():
