@@ -4283,6 +4283,16 @@ function auditBackendHardwareContract(snapshot) {
     setStatusExtra(`Hardware degraded: missing ${missing.join(", ")}`);
 }
 
+async function auditHardwareApiEndpoints() {
+    try {
+        await client.hardwareBridge();
+    } catch (error) {
+        console.warn("[HexLogic] Hardware API probe failed:", error);
+        pushToast("Hardware API is unreachable (check Netlify proxy + Render deploy).", "error", 8000);
+        setStatusExtra("Hardware API unreachable: redeploy backend / fix Netlify redirects");
+    }
+}
+
 async function initialize() {
     setLoaderProgress(8);
     setTheme(appState.theme);
@@ -4310,6 +4320,7 @@ async function initialize() {
     setLoaderProgress(82);
     renderSnapshot(snapshot);
     auditBackendHardwareContract(snapshot);
+    auditHardwareApiEndpoints();
     appState.editor.getModel().setValue(snapshot.source_code || DEFAULT_SOURCE[snapshot.architecture]);
     clearConsole();
     logConsole(monaco ? "Simulator ready. Monaco initialized." : "Simulator ready. Monaco failed to load; fallback editor active.");
