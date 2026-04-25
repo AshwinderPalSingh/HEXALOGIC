@@ -82,7 +82,7 @@ def _program_from_dict(data: dict[str, Any] | None) -> ProgramImage | None:
     )
 
 
-@dataclass(slots=True)
+@dataclass
 class SimulatorSession:
     session_id: str
     architecture: str = "8051"

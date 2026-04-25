@@ -4316,7 +4316,31 @@ async function initialize() {
     bindUi();
     setWorkspaceMode(appState.workspaceMode);
     setLoaderProgress(68);
-    const snapshot = await client.state();
+    let snapshot;
+    try {
+        snapshot = await client.state();
+    } catch (error) {
+        handleError(error, "Backend API unreachable");
+        const errorBox = byId("error-box");
+        if (errorBox) {
+            errorBox.hidden = false;
+            errorBox.innerHTML = `
+                <strong>Backend API unreachable.</strong>
+                HexLogic needs the Flask API to run (assemble/step/run + hardware state).
+                <br><br>
+                Fix checklist:
+                <br>1) Ensure Render service is live and passing <code>/health</code>.
+                <br>2) Ensure Netlify proxies <code>/api/v2/*</code> to Render in <code>netlify.toml</code>.
+                <br>3) Reload after backend deploy completes.
+            `.trim();
+        }
+        setStatusExtra("Backend offline: deploy Render / fix Netlify proxy");
+        const loader = byId("app-loader");
+        if (loader) {
+            loader.remove();
+        }
+        return;
+    }
     setLoaderProgress(82);
     renderSnapshot(snapshot);
     auditBackendHardwareContract(snapshot);

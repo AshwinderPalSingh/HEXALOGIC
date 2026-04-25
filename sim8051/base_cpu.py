@@ -15,7 +15,7 @@ from .model import Breakpoint, ProgramImage, ReverseDelta, RunResult, TraceEntry
 _DEBUG_TIMING = os.environ.get("HEXLOGIC_DEBUG_TIMING", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-@dataclass(slots=True)
+@dataclass
 class DebuggerState:
     breakpoints: dict[int, Breakpoint] = field(default_factory=dict)
     watchpoints: list[Watchpoint] = field(default_factory=list)

@@ -8,7 +8,7 @@ CpuBuilder = Callable[..., Any]
 AssemblerBuilder = Callable[..., Any]
 
 
-@dataclass(slots=True)
+@dataclass
 class ArchitectureRegistration:
     name: str
     cpu_builder: CpuBuilder

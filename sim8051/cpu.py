@@ -25,7 +25,7 @@ PAGE_BRANCH_OPCODES = AJMP_OPCODES | ACALL_OPCODES
 _DEBUG_TIMING = os.environ.get("HEXLOGIC_DEBUG_TIMING", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-@dataclass(slots=True)
+@dataclass
 class SerialPort:
     tx_log: list[int] = field(default_factory=list)
     rx_queue: deque[int] = field(default_factory=deque)

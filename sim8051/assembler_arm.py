@@ -38,7 +38,7 @@ ARM_DIRECTIVES = {"ORG", "END", "WORD", ".WORD", "DCD", "AREA", "ENTRY"}
 MNEMONIC_ORDER = sorted(DP_MNEMONICS | BRANCH_MNEMONICS | LOAD_STORE_MNEMONICS | MULTIPLY_LONG_MNEMONICS | PSEUDO_STACK | {"BX"}, key=len, reverse=True)
 
 
-@dataclass(slots=True)
+@dataclass
 class ParsedArmLine:
     line_no: int
     text: str
@@ -50,7 +50,7 @@ class ParsedArmLine:
     section: str = "code"
 
 
-@dataclass(slots=True)
+@dataclass
 class ArmMnemonic:
     base: str
     condition: int

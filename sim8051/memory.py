@@ -107,7 +107,7 @@ BIT_ALIASES["EI.7"] = BIT_ALIASES["IE.7"]
 BIT_ALIASES["EI.1"] = BIT_ALIASES["IE.1"]
 
 
-@dataclass(slots=True)
+@dataclass
 class PortState:
     latch: int = 0xFF
     external_mask: int = 0x00
@@ -140,7 +140,7 @@ class PortState:
             self.external_value &= ~mask & 0xFF
 
 
-@dataclass(slots=True)
+@dataclass
 class MemorySnapshot:
     iram: dict[int, int]
     sfr: dict[int, int]

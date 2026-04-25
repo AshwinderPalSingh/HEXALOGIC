@@ -237,6 +237,41 @@ body {
     pointer-events: none;
 }
 
+.boot-error {
+    position: fixed;
+    left: 50%;
+    top: 22px;
+    transform: translateX(-50%);
+    z-index: 10001;
+    width: min(760px, calc(100vw - 44px));
+    border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--danger) 65%, transparent);
+    background: color-mix(in srgb, var(--panel-bg) 92%, var(--danger) 8%);
+    color: var(--text-main);
+    padding: 0.85rem 1rem;
+    box-shadow: var(--shadow-md);
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.boot-error a {
+    color: var(--gutter-active);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.boot-error a:hover {
+    text-decoration: underline;
+}
+
+.boot-error code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 0.05rem 0.3rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--panel-border) 35%, transparent);
+}
+
 .loader-shell {
     width: min(420px, 92vw);
     display: flex;

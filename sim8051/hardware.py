@@ -46,7 +46,7 @@ def _read_word(sample: dict[int, int] | dict[str, int], address: int, *, endian:
     return bytes_[0] | (bytes_[1] << 8) | (bytes_[2] << 16) | (bytes_[3] << 24)
 
 
-@dataclass(slots=True)
+@dataclass
 class PinState:
     name: str
     level: int
@@ -70,7 +70,7 @@ class PinState:
         return payload
 
 
-@dataclass(slots=True)
+@dataclass
 class SignalEvent:
     time_ms: float
     pin: str
@@ -92,7 +92,7 @@ class SignalEvent:
         return payload
 
 
-@dataclass(slots=True)
+@dataclass
 class ValidationIssue:
     time_ms: float
     device_id: str

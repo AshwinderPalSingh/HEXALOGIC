@@ -174,7 +174,7 @@ END
 """.strip()
 
 
-@dataclass(slots=True)
+@dataclass
 class TimingAccuracy:
     expected_ms: float
     actual_ms: float
@@ -182,7 +182,7 @@ class TimingAccuracy:
     verdict: str
 
 
-@dataclass(slots=True)
+@dataclass
 class ScenarioResult:
     name: str
     architecture: str

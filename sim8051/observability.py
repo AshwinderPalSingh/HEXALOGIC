@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass, field
 
 
-@dataclass(slots=True)
+@dataclass
 class MetricsRegistry:
     started_at: float = field(default_factory=time.time)
     api_requests: int = 0

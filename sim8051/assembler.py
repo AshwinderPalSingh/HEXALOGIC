@@ -20,7 +20,7 @@ SPECIAL_OPERANDS = {"A", "AB", "C", "DPTR", "@DPTR", "@A+DPTR", "@A+PC"}
 _BRANCH_WITH_REL = {"SJMP", "JZ", "JNZ", "JC", "JNC", "DJNZ", "CJNE", "JB", "JNB", "JBC"}
 
 
-@dataclass(slots=True)
+@dataclass
 class ParsedLine:
     line_no: int
     text: str

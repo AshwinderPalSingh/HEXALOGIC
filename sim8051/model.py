@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 
-@dataclass(slots=True)
+@dataclass
 class SourceLocation:
     line: int
     text: str
@@ -13,7 +13,7 @@ class SourceLocation:
     bytes_: list[int]
 
 
-@dataclass(slots=True)
+@dataclass
 class ProgramImage:
     origin: int
     rom: bytearray
@@ -26,7 +26,7 @@ class ProgramImage:
     xram_init: dict[int, int] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass
 class TraceEntry:
     pc: int
     opcode: int
@@ -40,21 +40,21 @@ class TraceEntry:
     interrupt: str | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class Breakpoint:
     pc: int
     condition: str | None = None
     enabled: bool = True
 
 
-@dataclass(slots=True)
+@dataclass
 class Watchpoint:
     target: int | str
     space: Literal["iram", "sfr", "xram", "code", "bit", "register"] = "iram"
     enabled: bool = True
 
 
-@dataclass(slots=True)
+@dataclass
 class RunResult:
     halted: bool
     reason: str
@@ -65,20 +65,20 @@ class RunResult:
     interrupts: list[str] = field(default_factory=list)
 
 
-@dataclass(slots=True)
+@dataclass
 class SerialSnapshot:
     tx_buffer: list[int] = field(default_factory=list)
     rx_buffer: list[int] = field(default_factory=list)
     busy: bool = False
 
 
-@dataclass(slots=True)
+@dataclass
 class TimerSnapshot:
     t0: dict[str, int | bool]
     t1: dict[str, int | bool]
 
 
-@dataclass(slots=True)
+@dataclass
 class ReverseDelta:
     trace: TraceEntry
     cycles_before: int
