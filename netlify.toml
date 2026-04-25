@@ -7,13 +7,13 @@
 
 [[redirects]]
   from = "/backend/*"
-  to = "https://hexlogic-api.onrender.com/:splat"
+  to = "https://hexalogic.onrender.com/:splat"
   status = 200
   force = true
 
 [[redirects]]
   from = "/api/v2/*"
-  to = "https://hexlogic-api.onrender.com/api/v2/:splat"
+  to = "https://hexalogic.onrender.com/api/v2/:splat"
   status = 200
   force = true
 

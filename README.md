@@ -18,10 +18,10 @@ Professional multi-architecture emulator platform with a high-fidelity 8051 core
 ## Live Deployment
 
 Frontend (Netlify CDN):  
-https://hexalogic-simulator.netlify.app
+https://hexalogic.netlify.app
 
 Backend API (Render Web Service):  
-https://hexalogic-api.onrender.com
+https://hexalogic.onrender.com
 
 ---
 
@@ -237,7 +237,7 @@ Example:
 
 ```bash
 FLASK_ENV=production
-CORS_ALLOWED_ORIGINS=https://hexalogic-simulator.netlify.app
+CORS_ALLOWED_ORIGINS=https://hexalogic.netlify.app
 HEXLOGIC_API_BASE=
 HEXLOGIC_SESSION_BACKEND=memory
 REDIS_URL=
